@@ -17,22 +17,21 @@ class EmotionCNN(nn.Module):
         self.bn2 = nn.BatchNorm2d(64) # Batch normalization for 64 channels
 
         # Pooling layer
-        self.pool = nn.MaxPool2d(2) # reduces the spatial dimensions by 2 (e.g., from 20x100 to 10x50)
+        self.pool = nn.MaxPool2d(2) # Reduces the spatial dimensions by 2 (e.g., from 20x100 to 10x50)
         # Dropout layer
         self.dropout = nn.Dropout(0.5) # Turns off 50% of the neurons during training to prevent overfitting
         # Final classifier
         self.fc1 = nn.Linear(64*10*50, 128) # Fully connected layer, input size is 64 channels * 10 height * 50 width (after pooling), output size is 128
-        self.fc2 = nn.Linear(128, 8) # input size is 128, output size is 8 (number of emotion classes)
+        self.fc2 = nn.Linear(128, 8) # Input size is 128, output size is 8 (number of emotion classes)
 
     def forward(self, x):
     # Passes the input through the first convolutional layer, applies batch normalization, ReLU activation, and then max pooling
         x = self.pool(F.relu(self.bn1(self.conv1(x))))
-
+    
         x = self.pool(F.relu(self.bn2(self.conv2(x))))
     # Flattens the output from the convolutional layers to feed into the fully connected layers
         x = x.view(x.size(0), -1)
-        # Applies dropout to the output of the first fully connected layer, followed by ReLU activation
-        x = self.dropout(F.relu(self.fc1(x)))
-        # Final fully connected layer
+        x = self.dropout(F.relu(self.fc1(x))) # First layer with dropout and ReLU activation
+        # Output layer with 8 classes (emotions)
         x = self.fc2(x)
         return x
