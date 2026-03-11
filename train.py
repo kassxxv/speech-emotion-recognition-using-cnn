@@ -1,13 +1,15 @@
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from dataloader import train_loader, val_loader
 from models import EmotionCNN
+from feature_extraction import compile_features
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(device)
 
-
+compile_features("ravdess_metadata.csv") if not "features/" in os.listdir() else print("Features already extracted.")
 
 # Model initialization
 model = EmotionCNN().to(device)
