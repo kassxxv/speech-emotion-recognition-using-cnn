@@ -1,37 +1,16 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
-from torch.utils.data import Dataset, DataLoader
+from dataloader import train_loader, val_loader
 from models import EmotionCNN
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(device)
 
-# -----------------------------
-# Dummy dataset (тимчасово)
-# -----------------------------
-class DummyDataset(Dataset):
-
-    def __len__(self):
-        return 200
-
-    def __getitem__(self, idx):
-
-        x = torch.randn(1, 40, 200) # Randomly generated spectrogram (1 channel, 40 mel bands, 200 time frames)
-        y = torch.randint(0, 8, (1,)).item()  # emotion label
-
-        return x, y
-
-
-# Data loaders
-train_dataset = DummyDataset()
-val_dataset = DummyDataset()
-
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=32)
 
 
 # Model initialization
-model = EmotionCNN()
+model = EmotionCNN().to(device)
 
 
 # Loss function
@@ -39,11 +18,11 @@ criterion = nn.CrossEntropyLoss()
 
 
 # Adam optimizer
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=1e-5)
 
 
 # Training parameters
-epochs = 10
+epochs = 50
 best_val_loss = float("inf")
 
 
@@ -54,7 +33,8 @@ for epoch in range(epochs):
     train_loss = 0
 
     for x, y in train_loader:
-
+        x = x.to(device)
+        y = y.to(device)
         optimizer.zero_grad() # Clears the gradients of all optimized tensors
 
         outputs = model(x)
@@ -77,7 +57,8 @@ for epoch in range(epochs):
     with torch.no_grad():
 
         for x, y in val_loader:
-
+            x = x.to(device)
+            y = y.to(device)
             outputs = model(x)
 
             loss = criterion(outputs, y)

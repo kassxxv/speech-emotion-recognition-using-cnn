@@ -21,7 +21,7 @@ class EmotionCNN(nn.Module):
         # Dropout layer
         self.dropout = nn.Dropout(0.5) # Turns off 50% of the neurons during training to prevent overfitting
         # Final classifier
-        self.fc1 = nn.Linear(64*10*50, 128) # Fully connected layer, input size is 64 channels * 10 height * 50 width (after pooling), output size is 128
+        self.fc1 = nn.Linear(64*10*50, 128) # Fully connected layer, input size is 64 channels * 13 height * 50 width (after pooling), output size is 128
         self.fc2 = nn.Linear(128, 8) # Input size is 128, output size is 8 (number of emotion classes)
 
     def forward(self, x):

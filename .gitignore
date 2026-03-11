@@ -214,3 +214,5 @@ __marimo__/
 data/
 RAVDESS/
 ravdess_metadata.csv
+features/
+best_model.pt
