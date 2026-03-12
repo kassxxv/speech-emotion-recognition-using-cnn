@@ -1,13 +1,16 @@
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from dataloader import train_loader, val_loader
 from models import EmotionCNN
+from feature_extraction import compile_features
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cuda" if torch.cuda.is_available() else "cpu" 
 print(device)
 
-
+# Extract features if not already done to prevent cpu overload during training
+compile_features("ravdess_metadata.csv") if not "features" in os.listdir() else print("Features already extracted.")
 
 # Model initialization
 model = EmotionCNN().to(device)
@@ -18,11 +21,11 @@ criterion = nn.CrossEntropyLoss()
 
 
 # Adam optimizer
-optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=1e-5)
+optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=1e-5) # weit_decay is L2 regularization to prevent overfitting
 
 
 # Training parameters
-epochs = 50
+epochs = 50 
 best_val_loss = float("inf")
 
 
@@ -74,7 +77,7 @@ for epoch in range(epochs):
         best_val_loss = val_loss
 
         torch.save(model.state_dict(), "best_model.pt")
-
+        
         print("Best model saved!")
 
 
