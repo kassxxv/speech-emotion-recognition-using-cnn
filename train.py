@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from dataloader import train_loader, val_loader
-from models import EmotionCNN
+from models import EmotionCNNAttention
 from feature_extraction import compile_features
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -40,15 +40,16 @@ def mixup_criterion(criterion, pred, y_a, y_b, lam):
     return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
 
 
-# Model initialization (1-channel mel, 6 classes)
-model = EmotionCNN(in_channels=1, num_classes=6).to(device)
+# Model with attention
+model = EmotionCNNAttention(in_channels=1, num_classes=6).to(device)
+print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-# Loss with label smoothing (helps reduce overfitting)
+# Loss with label smoothing
 class_weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.2, 1.0]).to(device)
 criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
 
-# Adam optimizer with more weight decay
-optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=2e-4)
+# AdamW optimizer (better for attention models)
+optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
 
 # Cosine annealing scheduler
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-6)
@@ -60,7 +61,7 @@ patience = 25
 patience_counter = 0
 mixup_alpha = 0.4
 
-print(f"\nTraining: 1-channel, Mixup, label_smoothing=0.1, stronger augmentation...")
+print(f"\nTraining with ATTENTION model, Mixup, label_smoothing...")
 
 # Training loop
 for epoch in range(epochs):
