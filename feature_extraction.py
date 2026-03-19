@@ -45,30 +45,27 @@ def extract_mfcc(file_path, n_mfcc=40, target_frames=200):
 def compile_features(csv_path):
 
     df = pd.read_csv(csv_path)
+    total = len(df)
 
     os.makedirs("features/mel", exist_ok=True)
     os.makedirs("features/mfcc", exist_ok=True)
 
+    for i, row in enumerate(df.itertuples()):
 
-    for _, row in df.iterrows():
-
-        wav_path = row["file_path"]
+        wav_path = row.file_path
 
         mel = extract_mel(wav_path)
         mfcc = extract_mfcc(wav_path)
 
-
         filename = os.path.basename(wav_path).replace(".wav",".npy")
 
-        save_path = os.path.join("features/mel", filename)
+        np.save(os.path.join("features/mel", filename), mel)
+        np.save(os.path.join("features/mfcc", filename), mfcc)
 
-        np.save(save_path, mel)
+        if (i + 1) % 500 == 0:
+            print(f"Processed {i + 1}/{total} files...")
 
-        save_path = os.path.join("features/mfcc", filename)
-
-        np.save(save_path, mfcc)
-
-    print("Feature compilation finished.")
+    print(f"Feature extraction complete: {total} files processed.")
 
 if __name__ == "__main__":
-    compile_features("ravdess_metadata.csv")
+    compile_features("crema_metadata.csv")

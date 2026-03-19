@@ -11,8 +11,8 @@ from audiomentations import AddGaussianNoise
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
-# Load model
-model = EmotionCNN().to(device)
+# Load model (6 classes for CREMA-D)
+model = EmotionCNN(num_classes=6).to(device)
 
 try:
     model.load_state_dict(torch.load("best_model.pt", map_location=device))

@@ -7,20 +7,23 @@ import numpy as np
 
 from augmentation import spec_augment
 
-dataset_path = "RAVDESS"
+dataset_path = "CREMA-D"
+
+# CREMA-D emotion mapping (6 emotions)
+emotion_map = {
+    "ANG": ("angry", 0),
+    "DIS": ("disgust", 1),
+    "FEA": ("fear", 2),
+    "HAP": ("happy", 3),
+    "NEU": ("neutral", 4),
+    "SAD": ("sad", 5)
+}
 
 
-class RAVDESSDataset(Dataset):
-    """Custom dataset class for RAVDESS emotion recognition."""
+class CREMADataset(Dataset):
+    """Dataset class for CREMA-D emotion recognition."""
 
-    def __init__(self, csv_path, actors, train=False, augment_prob=0.6):
-        """
-        Args:
-            csv_path: Path to metadata CSV
-            actors: List of actor IDs to include
-            train: If True, apply data augmentation
-            augment_prob: Probability of applying augmentation (0.0-1.0)
-        """
+    def __init__(self, csv_path, actors, train=False, augment_prob=0.5):
         self.df = pd.read_csv(csv_path)
         self.df = self.df[self.df['actor_id'].isin(actors)]
         self.train = train
@@ -32,35 +35,80 @@ class RAVDESSDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         wav_path = row["file_path"]
+        filename = os.path.basename(wav_path).replace(".wav", ".npy")
 
         # Load mel spectrogram
-        filename = os.path.basename(wav_path).replace(".wav", ".npy")
-        feature_path = os.path.join("features/mel", filename)
-        feature = np.load(feature_path)
+        feature = np.load(os.path.join("features/mel", filename))
 
-        # Apply SpecAugment during training (balanced augmentation)
+        # Apply SpecAugment during training
         if self.train and np.random.random() < self.augment_prob:
-            feature = spec_augment(
-                feature,
-                freq_mask_param=8,
-                time_mask_param=25,
-                num_freq_masks=1,
-                num_time_masks=2
-            )
+            feature = spec_augment(feature, freq_mask_param=8, time_mask_param=25,
+                                   num_freq_masks=1, num_time_masks=2)
 
-        # Convert to tensor with channel dimension
+        # Convert to tensor with channel dimension (1, 40, 200)
         feature = torch.tensor(feature).float().unsqueeze(0)
 
-        # Labels: 1-8 -> 0-7
-        label = row["emotion_id"] - 1
+        label = row["emotion_id"]
 
         return feature, label
 
-train_dataset = RAVDESSDataset(
-    "ravdess_metadata.csv",
-    list(range(1, 17)),
+
+# Generate metadata CSV
+def generate_crema_metadata():
+    """Parse CREMA-D filenames and create metadata CSV."""
+    # Pattern: ActorID_Statement_Emotion_Level.wav
+    pattern = re.compile(r"(\d+)_(\w+)_(\w+)_(\w+)\.wav")
+
+    data = []
+    for file in os.listdir(dataset_path):
+        if file.endswith(".wav"):
+            match = pattern.match(file)
+            if match:
+                actor_id = int(match.group(1))
+                statement = match.group(2)
+                emotion_code = match.group(3)
+                intensity = match.group(4)
+
+                if emotion_code in emotion_map:
+                    emotion_name, emotion_id = emotion_map[emotion_code]
+                    file_path = os.path.join(dataset_path, file)
+
+                    data.append({
+                        "actor_id": actor_id,
+                        "statement": statement,
+                        "emotion_code": emotion_code,
+                        "emotion_name": emotion_name,
+                        "emotion_id": emotion_id,
+                        "intensity": intensity,
+                        "file_path": file_path
+                    })
+
+    df = pd.DataFrame(data)
+    df.to_csv("crema_metadata.csv", index=False)
+    print(f"Created crema_metadata.csv with {len(df)} samples")
+    return df
+
+
+# Generate CSV if not exists
+if not os.path.exists("crema_metadata.csv"):
+    generate_crema_metadata()
+
+# Get unique actor IDs
+df_temp = pd.read_csv("crema_metadata.csv")
+all_actors = sorted(df_temp['actor_id'].unique())
+n_actors = len(all_actors)
+
+# Split: ~80% train, ~20% val (by actor for speaker-independent evaluation)
+train_actors = all_actors[:int(n_actors * 0.8)]  # First 72 actors
+val_actors = all_actors[int(n_actors * 0.8):]    # Last 19 actors
+
+print(f"Train actors: {len(train_actors)}, Val actors: {len(val_actors)}")
+
+train_dataset = CREMADataset(
+    "crema_metadata.csv",
+    train_actors,
     train=True,
-    augment_prob=0.5  # Balanced augmentation
+    augment_prob=0.5
 )
 
 train_loader = DataLoader(
@@ -69,10 +117,10 @@ train_loader = DataLoader(
     shuffle=True
 )
 
-val_dataset = RAVDESSDataset(
-    "ravdess_metadata.csv",
-    list(range(17, 25)),
-    train=False  # No augmentation for validation
+val_dataset = CREMADataset(
+    "crema_metadata.csv",
+    val_actors,
+    train=False
 )
 
 val_loader = DataLoader(
@@ -81,57 +129,4 @@ val_loader = DataLoader(
     shuffle=False
 )
 
-# dictionary for IDs
-emotion_map = {
-    "01": "neutral",
-    "02": "calm",
-    "03": "happy",
-    "04": "sad",
-    "05": "angry",
-    "06": "fearful",
-    "07": "disgust",
-    "08": "surprised"
-}
-
-# filename.wav pattern: Modality, Vocal Channel, Emotion, Intensity, Statement, Repetition, Actor
-pattern = re.compile(r"(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})\.wav")
-
-data = []
-
-'''
-"os.walk": Walks through the dataset directory, matches files with the specified pattern,
-extracts metadata from the filename, and compiles it into a DataFrame which is then saved as a CSV file.
-'''
-for root, dirs, files in os.walk(dataset_path): 
-    for file in files:
-        if file.endswith(".wav"):
-            match = pattern.match(file)
-            if match:
-                modality = int(match.group(1))
-                vocal_channel = int(match.group(2))
-                emotion_id = int(match.group(3))
-                intensity = int(match.group(4))
-                statement = int(match.group(5))
-                repetition = int(match.group(6))
-                actor_id = int(match.group(7))
-
-                file_path = os.path.join(root, file)
-
-                actor_gender = "male" if actor_id % 2 == 1 else "female"
-
-                data.append({
-                    "modality": modality,
-                    "vocal_channel": vocal_channel,
-                    "emotion_id": emotion_id,
-                    "emotion_name": emotion_map[f"{emotion_id:02}"],
-                    "intensity": intensity,
-                    "statement": statement,
-                    "repetition": repetition,
-                    "actor_id": actor_id,
-                    "actor_gender": actor_gender,
-                    "file_path": file_path
-                })
-
-df = pd.DataFrame(data)
-df.to_csv("ravdess_metadata.csv", index=False)
-print(df.head())
+print(f"Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}")
