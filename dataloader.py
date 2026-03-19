@@ -13,7 +13,7 @@ dataset_path = "RAVDESS"
 class RAVDESSDataset(Dataset):
     """Custom dataset class for RAVDESS emotion recognition."""
 
-    def __init__(self, csv_path, actors, train=False, augment_prob=0.5):
+    def __init__(self, csv_path, actors, train=False, augment_prob=0.6):
         """
         Args:
             csv_path: Path to metadata CSV
@@ -38,12 +38,12 @@ class RAVDESSDataset(Dataset):
         feature_path = os.path.join("features/mel", filename)
         feature = np.load(feature_path)
 
-        # Apply SpecAugment during training
+        # Apply SpecAugment during training (balanced augmentation)
         if self.train and np.random.random() < self.augment_prob:
             feature = spec_augment(
                 feature,
-                freq_mask_param=8,   # Max frequency bands to mask
-                time_mask_param=25,  # Max time frames to mask
+                freq_mask_param=8,
+                time_mask_param=25,
                 num_freq_masks=1,
                 num_time_masks=2
             )
@@ -59,8 +59,8 @@ class RAVDESSDataset(Dataset):
 train_dataset = RAVDESSDataset(
     "ravdess_metadata.csv",
     list(range(1, 17)),
-    train=True,        # Enable augmentation
-    augment_prob=0.6   # 60% chance per sample
+    train=True,
+    augment_prob=0.5  # Balanced augmentation
 )
 
 train_loader = DataLoader(
