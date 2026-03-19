@@ -5,52 +5,76 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 
+from augmentation import spec_augment
+
 dataset_path = "RAVDESS"
 
-class RAVDESSDataset(Dataset): # Custom dataset class for RAVDESS, from pyTorch
 
-    def __init__(self, csv_path, actors):
+class RAVDESSDataset(Dataset):
+    """Custom dataset class for RAVDESS emotion recognition."""
 
+    def __init__(self, csv_path, actors, train=False, augment_prob=0.5):
+        """
+        Args:
+            csv_path: Path to metadata CSV
+            actors: List of actor IDs to include
+            train: If True, apply data augmentation
+            augment_prob: Probability of applying augmentation (0.0-1.0)
+        """
         self.df = pd.read_csv(csv_path)
-
-        # Filter the DataFrame to include only rows where 'actor_id' is in the specified list of actors
-        self.df = self.df[self.df['actor_id'].isin(actors)] 
+        self.df = self.df[self.df['actor_id'].isin(actors)]
+        self.train = train
+        self.augment_prob = augment_prob
 
     def __len__(self):
         return len(self.df)
-    
-    # Retrieves the feature and label for a given index in the dataset
+
     def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        wav_path = row["file_path"]
 
-        row = self.df.iloc[idx] # iloc is used to access a row by its integer index
-
-        wav_path = row["file_path"] # Returns file path for index
-
-        # Extracts filename and replaces .wav with .npy to get the corresponding feature file path
-        filename = os.path.basename(wav_path).replace(".wav", ".npy") 
-        feature_path = os.path.join("features/mel", filename) # Constructs the full path to the feature file
+        # Load mel spectrogram
+        filename = os.path.basename(wav_path).replace(".wav", ".npy")
+        feature_path = os.path.join("features/mel", filename)
         feature = np.load(feature_path)
-        # Converts the feature to a PyTorch tensor, normalizes it, and adds a channel dimension (unsqueeze(0))
+
+        # Apply SpecAugment during training
+        if self.train and np.random.random() < self.augment_prob:
+            feature = spec_augment(
+                feature,
+                freq_mask_param=8,   # Max frequency bands to mask
+                time_mask_param=25,  # Max time frames to mask
+                num_freq_masks=1,
+                num_time_masks=2
+            )
+
+        # Convert to tensor with channel dimension
         feature = torch.tensor(feature).float().unsqueeze(0)
-        # Changes the label from 1-8 to 0-7 by subtracting 1, since PyTorch expects labels to start from 0
+
+        # Labels: 1-8 -> 0-7
         label = row["emotion_id"] - 1
 
         return feature, label
 
 train_dataset = RAVDESSDataset(
     "ravdess_metadata.csv",
-    list(range(1,17))
+    list(range(1, 17)),
+    train=True,        # Enable augmentation
+    augment_prob=0.6   # 60% chance per sample
 )
 
 train_loader = DataLoader(
     train_dataset,
-    batch_size=32, # Number of samples per batch to load
+    batch_size=32,
     shuffle=True
 )
+
 val_dataset = RAVDESSDataset(
     "ravdess_metadata.csv",
-    list(range(17,25))
+    list(range(17, 25)),
+    train=False  # No augmentation for validation
 )
+
 val_loader = DataLoader(
     val_dataset,
     batch_size=32,

@@ -25,7 +25,7 @@ optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=1e-5) # weit_
 
 
 # Training parameters
-epochs = 50 
+epochs = 100 
 best_val_loss = float("inf")
 
 
