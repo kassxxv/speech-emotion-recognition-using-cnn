@@ -40,15 +40,15 @@ def mixup_criterion(criterion, pred, y_a, y_b, lam):
     return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
 
 
-# Model initialization (6 classes for CREMA-D, deeper model)
-model = EmotionCNN(num_classes=6).to(device)
+# Model initialization (1-channel mel, 6 classes)
+model = EmotionCNN(in_channels=1, num_classes=6).to(device)
 
-# Class weights for CREMA-D
+# Loss with label smoothing (helps reduce overfitting)
 class_weights = torch.tensor([1.0, 1.0, 1.0, 1.0, 1.2, 1.0]).to(device)
-criterion = nn.CrossEntropyLoss(weight=class_weights)
+criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
 
-# Adam optimizer
-optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+# Adam optimizer with more weight decay
+optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=2e-4)
 
 # Cosine annealing scheduler
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-6)
@@ -56,11 +56,11 @@ scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1
 # Training parameters
 epochs = 100
 best_val_loss = float("inf")
-patience = 20  # Increased patience for deeper model
+patience = 25
 patience_counter = 0
-mixup_alpha = 0.4  # Mixup strength
+mixup_alpha = 0.4
 
-print(f"\nTraining with Mixup (alpha={mixup_alpha}) and deeper model...")
+print(f"\nTraining: 1-channel, Mixup, label_smoothing=0.1, stronger augmentation...")
 
 # Training loop
 for epoch in range(epochs):

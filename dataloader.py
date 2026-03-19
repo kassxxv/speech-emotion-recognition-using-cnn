@@ -37,13 +37,13 @@ class CREMADataset(Dataset):
         wav_path = row["file_path"]
         filename = os.path.basename(wav_path).replace(".wav", ".npy")
 
-        # Load mel spectrogram
+        # Load mel spectrogram only (1-channel)
         feature = np.load(os.path.join("features/mel", filename))
 
         # Apply SpecAugment during training
         if self.train and np.random.random() < self.augment_prob:
-            feature = spec_augment(feature, freq_mask_param=8, time_mask_param=25,
-                                   num_freq_masks=1, num_time_masks=2)
+            feature = spec_augment(feature, freq_mask_param=10, time_mask_param=30,
+                                   num_freq_masks=2, num_time_masks=2)
 
         # Convert to tensor with channel dimension (1, 40, 200)
         feature = torch.tensor(feature).float().unsqueeze(0)
@@ -108,7 +108,7 @@ train_dataset = CREMADataset(
     "crema_metadata.csv",
     train_actors,
     train=True,
-    augment_prob=0.5
+    augment_prob=0.7  # Increased for more regularization
 )
 
 train_loader = DataLoader(

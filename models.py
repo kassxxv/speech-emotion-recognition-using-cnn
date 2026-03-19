@@ -23,8 +23,8 @@ class EmotionCNN(nn.Module):
         self.bn4 = nn.BatchNorm2d(256)
 
         self.pool = nn.MaxPool2d(2)
-        self.dropout2d = nn.Dropout2d(0.1)
-        self.dropout = nn.Dropout(0.4)
+        self.dropout2d = nn.Dropout2d(0.15)  # Increased for regularization
+        self.dropout = nn.Dropout(0.5)       # Increased for regularization
 
         # After 4 pooling: 40x200 -> 20x100 -> 10x50 -> 5x25 -> 2x12
         self.fc1 = nn.Linear(256 * 2 * 12, 512)
