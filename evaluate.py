@@ -1,18 +1,16 @@
 import torch
 import numpy as np
-from models import EmotionCNN
+from models import EmotionCNNAttention
 from dataloader import val_loader
 from sklearn.metrics import f1_score
 import matplotlib.pyplot as plt
-
-from audiomentations import AddGaussianNoise
 
 # Device
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
-# Load model (1-channel mel, 6 classes)
-model = EmotionCNN(in_channels=1, num_classes=6).to(device)
+# Load attention model
+model = EmotionCNNAttention(in_channels=1, num_classes=6).to(device)
 
 try:
     model.load_state_dict(torch.load("best_model.pt", map_location=device))
@@ -24,15 +22,15 @@ except FileNotFoundError:
 model.eval()
 
 
-# --- Функция добавления шума с контролем SNR ---
 def add_noise_snr(signal, snr_db):
+    """Add Gaussian noise with specified SNR (Signal-to-Noise Ratio) in dB."""
     signal_power = np.mean(signal**2)
     noise_power = signal_power / (10**(snr_db / 10))
     noise = np.random.normal(0, np.sqrt(noise_power), signal.shape)
     return signal + noise
 
 
-# --- Оценка при разных SNR ---
+# Evaluate at different SNR levels
 snr_levels = [20, 5]  # dB
 f1_scores = []
 
@@ -47,7 +45,7 @@ for snr in snr_levels:
             x = x.to(device)
             y = y.to(device)
 
-            # Добавляем шум к входу
+            # Add noise to input
             noisy_x = x.cpu().numpy()
             noisy_x = np.array([add_noise_snr(sample, snr) for sample in noisy_x])
             noisy_x = torch.tensor(noisy_x, dtype=torch.float32).to(device)
@@ -64,13 +62,13 @@ for snr in snr_levels:
     print(f"F1-score (SNR={snr}): {f1:.4f}")
 
 
-# --- График ---
-plt.figure()
-plt.plot(snr_levels, f1_scores, marker='o')
-plt.xlabel("SNR (dB)")
-plt.ylabel("F1-score")
-plt.title("Model Robustness to Noise")
-plt.gca().invert_xaxis()  # чтобы 20 → 5 шло слева направо
-plt.grid()
-plt.savefig("noise_robustness.png")
-plt.show()
+# Plot results
+plt.figure(figsize=(8, 5))
+plt.plot(snr_levels, f1_scores, marker='o', linewidth=2, markersize=8)
+plt.xlabel("SNR (dB)", fontsize=12)
+plt.ylabel("F1-score", fontsize=12)
+plt.title("Model Robustness to Noise", fontsize=14)
+plt.gca().invert_xaxis()  # SNR from 20 to 5 (left to right)
+plt.grid(True, alpha=0.3)
+plt.savefig("noise_robustness.png", dpi=100, bbox_inches='tight')
+print("\nPlot saved to noise_robustness.png")
