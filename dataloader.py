@@ -2,7 +2,7 @@ import os
 import re
 import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 import numpy as np
 
 from augmentation import spec_augment
@@ -20,35 +20,36 @@ emotion_map = {
 }
 
 
-class CREMADataset(Dataset):
+class CREMADataset(Dataset): 
     """Dataset class for CREMA-D emotion recognition."""
 
-    def __init__(self, csv_path, actors, train=False, augment_prob=0.5):
-        self.df = pd.read_csv(csv_path)
-        self.df = self.df[self.df['actor_id'].isin(actors)]
-        self.train = train
-        self.augment_prob = augment_prob
+    def __init__(self, csv_path, actors, train=False, augment_prob=0.5): # Initialization
+        self.df = pd.read_csv(csv_path) # Load metadata CSV
+        self.df = self.df[self.df['actor_id'].isin(actors)] # Filter by actor split
+        self.train = train 
+        self.augment_prob = augment_prob # Probability of applying SpecAugment during training
+        self.labels = self.df["emotion_id"].tolist() # Store labels for weighted sampling
 
     def __len__(self):
         return len(self.df)
 
-    def __getitem__(self, idx):
-        row = self.df.iloc[idx]
-        wav_path = row["file_path"]
-        filename = os.path.basename(wav_path).replace(".wav", ".npy")
+    def __getitem__(self, idx): # Get item by index
+        row = self.df.iloc[idx] # Get file path and corresponding mel spectrogram feature
+        wav_path = row["file_path"] # Path to the original wav file
+        filename = os.path.basename(wav_path).replace(".wav", ".npy")  # Other format
 
         # Load mel spectrogram only (1-channel)
-        feature = np.load(os.path.join("features/mel", filename))
+        feature = np.load(os.path.join("features/mel", filename)) # Temporary only mel spectrogram
 
         # Apply SpecAugment during training
-        if self.train and np.random.random() < self.augment_prob:
+        if self.train and np.random.random() < self.augment_prob: # Randomly apply augmentation to increase robustness
             feature = spec_augment(feature, freq_mask_param=10, time_mask_param=30,
-                                   num_freq_masks=2, num_time_masks=2)
+                                   num_freq_masks=2, num_time_masks=2) # More aggressive augmentation for better generalization
 
         # Convert to tensor with channel dimension (1, 40, 200)
         feature = torch.tensor(feature).float().unsqueeze(0)
 
-        label = row["emotion_id"]
+        label = row["emotion_id"] # Get emotion label as integer
 
         return feature, label
 
@@ -95,32 +96,45 @@ if not os.path.exists("crema_metadata.csv"):
 
 # Get unique actor IDs
 df_temp = pd.read_csv("crema_metadata.csv")
-all_actors = sorted(df_temp['actor_id'].unique())
+all_actors = sorted(df_temp['actor_id'].unique()) # Returns sorted list of unique actor IDs
 n_actors = len(all_actors)
 
 # Split: ~80% train, ~20% val (by actor for speaker-independent evaluation)
-train_actors = all_actors[:int(n_actors * 0.8)]  # First 72 actors
-val_actors = all_actors[int(n_actors * 0.8):]    # Last 19 actors
+rng = np.random.default_rng(42) # Random number generator with standard seed for reproducibility
+shuffled_actors = rng.permutation(all_actors) # Shuffle actor IDs
+train_actors = shuffled_actors[:int(n_actors * 0.8)] # First 80% of shuffled actors for training
+val_actors = shuffled_actors[int(n_actors * 0.8):] # Remaining 20% of shuffled actors for validation
 
 print(f"Train actors: {len(train_actors)}, Val actors: {len(val_actors)}")
 
 train_dataset = CREMADataset(
     "crema_metadata.csv",
     train_actors,
-    train=True,
+    train=True, # Use training set with augmentation
     augment_prob=0.7  # Increased for more regularization
-)
-
-train_loader = DataLoader(
-    train_dataset,
-    batch_size=32,
-    shuffle=True
 )
 
 val_dataset = CREMADataset(
     "crema_metadata.csv",
     val_actors,
-    train=False
+    train=False # Use validation set without augmentation
+)
+
+# Balanced sampling to improve macro-F1 on minority emotions.
+train_labels = np.array(train_dataset.labels)
+class_counts = np.bincount(train_labels, minlength=6)
+class_weights = 1.0 / np.maximum(class_counts, 1)
+sample_weights = class_weights[train_labels]
+train_sampler = WeightedRandomSampler(
+    weights=torch.DoubleTensor(sample_weights),
+    num_samples=len(sample_weights),
+    replacement=True
+)
+
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=32,
+    sampler=train_sampler # Use weighted random sampler for balanced batches
 )
 
 val_loader = DataLoader(
