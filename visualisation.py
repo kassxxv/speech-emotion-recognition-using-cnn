@@ -1,3 +1,4 @@
+import os
 import matplotlib.pyplot as plt
 
 class TrainingTracker:
@@ -6,6 +7,9 @@ class TrainingTracker:
         self.train_loss = []
         self.val_loss = []
         self.val_f1 = []
+
+        # if there is no folder
+        os.makedirs("results", exist_ok=True)
 
     def log(self, train_loss, val_loss, val_f1):
         self.train_loss.append(train_loss)
@@ -21,10 +25,10 @@ class TrainingTracker:
         plt.ylabel("Loss")
         plt.legend()
         plt.grid()
+
         plt.savefig(f"results/{self.name}_loss.png")
         plt.show()
         plt.close()
-
 
     def plot_f1(self):
         plt.figure()
@@ -34,6 +38,7 @@ class TrainingTracker:
         plt.ylabel("F1")
         plt.legend()
         plt.grid()
+
         plt.savefig(f"results/{self.name}_F1score.png")
         plt.show()
         plt.close()
