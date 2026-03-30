@@ -7,6 +7,9 @@ from sklearn.metrics import f1_score
 from dataloader import train_loader, val_loader
 from models import EmotionCNNAttention
 from feature_extraction import compile_features
+from visualisation import TrainingTracker
+
+tracker = TrainingTracker(name="with_dropout")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Device: {device}") # Will use GPU if available, otherwise CPU
@@ -128,7 +131,7 @@ for epoch in range(epochs):
         )
     else:
         patience_counter += 1
-
+    tracker.log(train_loss, val_loss, val_f1_macro)
     print(
         f"Epoch {epoch+1}/{epochs} | Train: {train_loss:.4f} | ValLoss: {val_loss:.4f} "
         f"| Acc: {val_acc:.1f}% | F1(m): {val_f1_macro:.4f} "
@@ -140,3 +143,6 @@ for epoch in range(epochs):
         break
 
 print(f"\nTraining complete. Best macro-F1: {best_val_macro_f1:.4f}")
+tracker.plot()
+tracker.plot_f1()
+
