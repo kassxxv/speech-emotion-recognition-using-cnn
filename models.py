@@ -5,8 +5,10 @@ import torch.nn.functional as F
 class EmotionCNNAttention(nn.Module):
     """CNN for emotion recognition."""
 
-    def __init__(self, in_channels=1, num_classes=6):
+    def __init__(self, in_channels=1, num_classes=6, use_dropout=True):
         super().__init__()
+
+        self.use_dropout = use_dropout
         # Conv block 1: 1 -> 32 channels
         self.conv1 = nn.Conv2d(in_channels, 32, 3, padding=1)
         self.bn1 = nn.BatchNorm2d(32) 
@@ -26,8 +28,9 @@ class EmotionCNNAttention(nn.Module):
         self.bn4 = nn.BatchNorm2d(256)
 
         self.pool = nn.MaxPool2d(2)
-        self.dropout2d = nn.Dropout2d(0.15)
-        self.dropout = nn.Dropout(0.5) # Dropout 50% neurons for regularization to prevent overfitting
+        if self.use_dropout:
+            self.dropout2d = nn.Dropout2d(0.15)
+            self.dropout = nn.Dropout(0.5) # Dropout 50% neurons for regularization to prevent overfitting
 
         # Global average pooling + FC
 
@@ -42,25 +45,32 @@ class EmotionCNNAttention(nn.Module):
 
         x = self.pool(F.relu(self.bn2(self.conv2(x))))
         # 100x20 -> 50x10
-        x = self.dropout2d(x)
+        if self.use_dropout:
+            x = self.dropout2d(x)
 
         x = self.pool(F.relu(self.bn3(self.conv3(x))))
         # 50x10 -> 25x5
-        x = self.dropout2d(x)
+        if self.use_dropout:
+            x = self.dropout2d(x)
 
         x = self.pool(F.relu(self.bn4(self.conv4(x))))
         # 25x5 -> 12x2
-        x = self.dropout2d(x)
+        if self.use_dropout:
+            x = self.dropout2d(x)
 
         # Global pooling instead of flatten (more robust)
         x = self.global_pool(x)
         x = x.view(x.size(0), -1)
 
         # Classifier
-        x = self.dropout(F.relu(self.fc1(x)))
-        x = self.fc2(x)
-        return x
+        x = F.relu(self.fc1(x))
 
+        if self.use_dropout:
+            x = self.dropout(x)
+
+        x = self.fc2(x)
+
+        return x
 # Alternative simpler CNN without attention (for ablation study)
 # class EmotionCNN(nn.Module):
 #     def __init__(self, in_channels=1, num_classes=6):
