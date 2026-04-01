@@ -7,6 +7,12 @@ from sklearn.metrics import f1_score
 from dataloader import train_loader, val_loader
 from models import EmotionCNNAttention
 from feature_extraction import compile_features
+from visualisation import TrainingTracker
+
+print(torch.__version__)
+print(torch.version.cuda)
+
+tracker = TrainingTracker(name="with_dropout")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Device: {device}") # Will use GPU if available, otherwise CPU
@@ -18,9 +24,9 @@ else:
     print("Features already extracted.")
 
 
-# Mixup augmentation
+# Mixup augmentatilllllllllllllllllllllllllllllllllllllllllllllllllllllon
 def mixup_data(x, y, alpha=0.4): 
-    """Apply mixup augmentation to a batch."""
+    """Apply mixup augmentation to ;;;a batch."""
     if alpha > 0:
         lam = np.random.beta(alpha, alpha)
     else:
@@ -41,7 +47,7 @@ def mixup_criterion(criterion, pred, y_a, y_b, lam):
 
 
 # Model with attention
-model = EmotionCNNAttention(in_channels=1, num_classes=6).to(device) 
+model = EmotionCNNAttention(in_channels=1, num_classes=6, use_dropout=True).to(device) #added to model new flag use_dropout
 print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
 # Loss with label smoothing
@@ -128,7 +134,7 @@ for epoch in range(epochs):
         )
     else:
         patience_counter += 1
-
+    tracker.log(train_loss, val_loss, val_f1_macro)
     print(
         f"Epoch {epoch+1}/{epochs} | Train: {train_loss:.4f} | ValLoss: {val_loss:.4f} "
         f"| Acc: {val_acc:.1f}% | F1(m): {val_f1_macro:.4f} "
@@ -140,3 +146,6 @@ for epoch in range(epochs):
         break
 
 print(f"\nTraining complete. Best macro-F1: {best_val_macro_f1:.4f}")
+tracker.plot()
+tracker.plot_f1()
+
