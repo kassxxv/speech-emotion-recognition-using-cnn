@@ -12,7 +12,7 @@ from visualisation import TrainingTracker
 print(torch.__version__)
 print(torch.version.cuda)
 
-tracker = TrainingTracker(name="without_dropout")
+tracker = TrainingTracker(name="with_dropout")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Device: {device}") # Will use GPU if available, otherwise CPU
@@ -47,7 +47,7 @@ def mixup_criterion(criterion, pred, y_a, y_b, lam):
 
 
 # Model with attention
-model = EmotionCNNAttention(in_channels=1, num_classes=6, use_dropout=False).to(device) #added to model new flag use_dropout
+model = EmotionCNNAttention(in_channels=1, num_classes=6, use_dropout=True).to(device) #added to model new flag use_dropout
 print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
 # Loss with label smoothing
