@@ -104,6 +104,21 @@ mel_norm = (mel_np - mel_min) / (mel_max - mel_min + 1e-8)  # (40, 200) in [0, 1
 # Add batch and channel dimensions for the model: (1, 1, 40, 200)
 input_tensor = torch.tensor(mel_np).float().unsqueeze(0).unsqueeze(0).to(device)
 
+# Compute real time axis in seconds using actual SR from the audio file
+_, SR      = librosa.load(wav_path, sr=None, duration=0.1)  # load tiny slice just to get SR
+HOP_LENGTH  = 512
+N_FRAMES    = mel_np.shape[1]                        # 200
+DURATION    = N_FRAMES * HOP_LENGTH / SR             # total padded duration in seconds
+
+# Detect actual content end — find last frame that is not near-silent (padding = min value)
+threshold   = mel_np.min() + 1.0                     # 1 dB above the padding floor
+active_cols = np.where(mel_np.max(axis=0) > threshold)[0]
+last_frame  = int(active_cols[-1]) + 1 if len(active_cols) > 0 else N_FRAMES
+REAL_DURATION = last_frame * HOP_LENGTH / SR         # actual speech duration in seconds
+
+# extent = [x_left, x_right, y_bottom, y_top] passed to imshow
+TIME_EXTENT = [0, REAL_DURATION, 0, mel_np.shape[0]]  # X in seconds, Y in mel bins
+
 
 # ─────────────────────────────────────────────
 # 4. GRAD-CAM
@@ -142,38 +157,48 @@ print(f"Grad-CAM min={grayscale_cam.min():.3f}, max={grayscale_cam.max():.3f}")
 
 # ─────────────────────────────────────────────
 # 5. VISUALIZATION AND SAVE PNG
-#    Convert mel_norm to 3-channel RGB for overlay
 # ─────────────────────────────────────────────
 
 # Apply viridis colormap to mel spectrogram to get an RGB image
-mel_rgb = cm.viridis(mel_norm)[:, :, :3]   # (40, 200, 3), float64 in [0, 1]
-mel_rgb = mel_rgb.astype(np.float32)
+mel_rgb = cm.viridis(mel_norm)[:, :, :3].astype(np.float32)  # (40, 200, 3) in [0, 1]
+
+# Physically crop all arrays to last active frame — no padding tail
+mel_crop     = mel_np[:, :last_frame]         # (40, last_frame)
+cam_crop     = grayscale_cam[:, :last_frame]  # (40, last_frame)
+mel_rgb_crop = mel_rgb[:, :last_frame, :]     # (40, last_frame, 3)
+
+# Build time tick labels: map pixel columns → seconds
+n_cols   = mel_crop.shape[1]
+tick_pos = np.linspace(0, n_cols - 1, 6)                        # 6 evenly spaced ticks in pixel space
+tick_sec = [f"{t:.2f}" for t in tick_pos * HOP_LENGTH / SR]     # convert to seconds for labels
 
 fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
 # Panel 1 — Original mel spectrogram
-axes[0].imshow(mel_np, aspect="auto", origin="lower", cmap="viridis")
+axes[0].imshow(mel_crop, aspect="auto", origin="lower", cmap="viridis")
+axes[0].set_xticks(tick_pos)
+axes[0].set_xticklabels(tick_sec)
 axes[0].set_title("Mel Spectrogram (original)", fontsize=13)
-axes[0].set_xlabel("Time (frames)")
+axes[0].set_xlabel("Time (seconds)")
 axes[0].set_ylabel("Mel frequency (bin)")
 plt.colorbar(axes[0].images[0], ax=axes[0], label="dB")
 
-# Panel 2 — Raw Grad-CAM heatmap (grayscale rendered as jet colormap)
-im = axes[1].imshow(grayscale_cam, aspect="auto", origin="lower", cmap="jet")
+# Panel 2 — Grad-CAM heatmap
+im = axes[1].imshow(cam_crop, aspect="auto", origin="lower", cmap="jet")
+axes[1].set_xticks(tick_pos)
+axes[1].set_xticklabels(tick_sec)
 axes[1].set_title("Grad-CAM Heatmap", fontsize=13)
-axes[1].set_xlabel("Time (frames)")
+axes[1].set_xlabel("Time (seconds)")
 axes[1].set_ylabel("Mel frequency (bin)")
 plt.colorbar(im, ax=axes[1], label="Importance")
 
-# Panel 3 — Overlay: spectrogram + heatmap blended together
-axes[2].imshow(mel_rgb, aspect="auto", origin="lower")
-axes[2].imshow(grayscale_cam, aspect="auto", origin="lower",
-               cmap="jet", alpha=0.5)   # alpha=0.5 blends heatmap over spectrogram
-axes[2].set_title(
-    f"Overlay\nTrue: {emotion_name} | Predicted: {pred_name}",
-    fontsize=12
-)
-axes[2].set_xlabel("Time (frames)")
+# Panel 3 — Overlay
+axes[2].imshow(mel_rgb_crop, aspect="auto", origin="lower")
+axes[2].imshow(cam_crop, aspect="auto", origin="lower", cmap="jet", alpha=0.5)
+axes[2].set_xticks(tick_pos)
+axes[2].set_xticklabels(tick_sec)
+axes[2].set_title(f"Overlay\nTrue: {emotion_name} | Predicted: {pred_name}", fontsize=12)
+axes[2].set_xlabel("Time (seconds)")
 axes[2].set_ylabel("Mel frequency (bin)")
 
 plt.suptitle(
