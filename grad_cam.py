@@ -20,8 +20,8 @@ from feature_extraction import extract_mel
 # ─────────────────────────────────────────────
 CHECKPOINT_PATH = "best_model.pt"
 CSV_PATH        = "crema_metadata.csv"
-TARGET_EMOTION  = "ANG"          # Emotion code from CREMA-D (ANG/DIS/FEA/HAP/NEU/SAD)
-OUTPUT_PATH     = "gradcam_anger.png"
+TARGET_EMOTION  = "SAD"          # Emotion code from CREMA-D (ANG/DIS/FEA/HAP/NEU/SAD)
+
 
 EMOTION_MAP = {
     "ANG": ("angry",   0),
@@ -32,6 +32,8 @@ EMOTION_MAP = {
     "SAD": ("sad",     5),
 }
 
+OUTPUT_PATH     = f"results/gradcam/gradcam_{EMOTION_MAP[TARGET_EMOTION][0]}.png"
+os.makedirs("results/gradcam", exist_ok=True)
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
@@ -104,20 +106,14 @@ mel_norm = (mel_np - mel_min) / (mel_max - mel_min + 1e-8)  # (40, 200) in [0, 1
 # Add batch and channel dimensions for the model: (1, 1, 40, 200)
 input_tensor = torch.tensor(mel_np).float().unsqueeze(0).unsqueeze(0).to(device)
 
-# Compute real time axis in seconds using actual SR from the audio file
-_, SR      = librosa.load(wav_path, sr=None, duration=0.1)  # load tiny slice just to get SR
-HOP_LENGTH  = 512
-N_FRAMES    = mel_np.shape[1]                        # 200
-DURATION    = N_FRAMES * HOP_LENGTH / SR             # total padded duration in seconds
-
-# Detect actual content end — find last frame that is not near-silent (padding = min value)
-threshold   = mel_np.min() + 1.0                     # 1 dB above the padding floor
-active_cols = np.where(mel_np.max(axis=0) > threshold)[0]
-last_frame  = int(active_cols[-1]) + 1 if len(active_cols) > 0 else N_FRAMES
-REAL_DURATION = last_frame * HOP_LENGTH / SR         # actual speech duration in seconds
-
-# extent = [x_left, x_right, y_bottom, y_top] passed to imshow
-TIME_EXTENT = [0, REAL_DURATION, 0, mel_np.shape[0]]  # X in seconds, Y in mel bins
+# Detect actual content end by loading real audio duration via soundfile
+import soundfile as sf
+info          = sf.info(wav_path)
+real_sec      = info.duration                        # exact audio length in seconds
+HOP_LENGTH    = 512
+SR            = info.samplerate                      # real sample rate of the file
+last_frame    = min(int(real_sec * SR / HOP_LENGTH), mel_np.shape[1])
+REAL_DURATION = last_frame * HOP_LENGTH / SR
 
 
 # ─────────────────────────────────────────────
@@ -156,7 +152,7 @@ print(f"Grad-CAM min={grayscale_cam.min():.3f}, max={grayscale_cam.max():.3f}")
 
 
 # ─────────────────────────────────────────────
-# 5. VISUALIZATION AND SAVE PNG
+# 5. VISUALIZATION AND SAVE — 3 SEPARATE PNGs
 # ─────────────────────────────────────────────
 
 # Apply viridis colormap to mel spectrogram to get an RGB image
@@ -167,46 +163,49 @@ mel_crop     = mel_np[:, :last_frame]         # (40, last_frame)
 cam_crop     = grayscale_cam[:, :last_frame]  # (40, last_frame)
 mel_rgb_crop = mel_rgb[:, :last_frame, :]     # (40, last_frame, 3)
 
-# Build time tick labels: map pixel columns → seconds
+# Build time tick labels: map pixel columns -> seconds
 n_cols   = mel_crop.shape[1]
-tick_pos = np.linspace(0, n_cols - 1, 6)                        # 6 evenly spaced ticks in pixel space
-tick_sec = [f"{t:.2f}" for t in tick_pos * HOP_LENGTH / SR]     # convert to seconds for labels
+tick_pos = np.linspace(0, n_cols - 1, 6)
+tick_sec = [f"{t:.2f}" for t in tick_pos * HOP_LENGTH / SR]
 
+# ── Single figure with 3 panels side by side ─────────────
 fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
 # Panel 1 — Original mel spectrogram
-axes[0].imshow(mel_crop, aspect="auto", origin="lower", cmap="viridis")
+img1 = axes[0].imshow(mel_crop, aspect="auto", origin="lower", cmap="viridis")
 axes[0].set_xticks(tick_pos)
 axes[0].set_xticklabels(tick_sec)
 axes[0].set_title("Mel Spectrogram (original)", fontsize=13)
 axes[0].set_xlabel("Time (seconds)")
 axes[0].set_ylabel("Mel frequency (bin)")
-plt.colorbar(axes[0].images[0], ax=axes[0], label="dB")
+plt.colorbar(img1, ax=axes[0], label="dB")
 
 # Panel 2 — Grad-CAM heatmap
-im = axes[1].imshow(cam_crop, aspect="auto", origin="lower", cmap="jet")
+img2 = axes[1].imshow(cam_crop, aspect="auto", origin="lower", cmap="jet")
 axes[1].set_xticks(tick_pos)
 axes[1].set_xticklabels(tick_sec)
 axes[1].set_title("Grad-CAM Heatmap", fontsize=13)
 axes[1].set_xlabel("Time (seconds)")
 axes[1].set_ylabel("Mel frequency (bin)")
-plt.colorbar(im, ax=axes[1], label="Importance")
+plt.colorbar(img2, ax=axes[1], label="Importance")
 
 # Panel 3 — Overlay
 axes[2].imshow(mel_rgb_crop, aspect="auto", origin="lower")
 axes[2].imshow(cam_crop, aspect="auto", origin="lower", cmap="jet", alpha=0.5)
 axes[2].set_xticks(tick_pos)
 axes[2].set_xticklabels(tick_sec)
-axes[2].set_title(f"Overlay\nTrue: {emotion_name} | Predicted: {pred_name}", fontsize=12)
+axes[2].set_title(f"Overlay — True: {emotion_name} | Predicted: {pred_name}", fontsize=13)
 axes[2].set_xlabel("Time (seconds)")
 axes[2].set_ylabel("Mel frequency (bin)")
 
 plt.suptitle(
     f"Grad-CAM — emotion '{emotion_name}' | conv4 (last Conv2d layer)",
-    fontsize=14, fontweight="bold", y=1.02
+    fontsize=14, fontweight="bold"
 )
 
 plt.tight_layout()
 plt.savefig(OUTPUT_PATH, dpi=150, bbox_inches="tight")
+plt.close(fig)
 print(f"\nSaved: {OUTPUT_PATH}")
-plt.show()
+
+print("\nDone.")

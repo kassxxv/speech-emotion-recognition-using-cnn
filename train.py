@@ -12,7 +12,7 @@ from visualisation import TrainingTracker
 print(torch.__version__)
 print(torch.version.cuda)
 
-tracker = TrainingTracker(name="with_dropout")
+tracker = TrainingTracker(name="without_dropout")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Device: {device}") # Will use GPU if available, otherwise CPU
