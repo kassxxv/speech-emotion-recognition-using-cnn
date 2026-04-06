@@ -2,14 +2,14 @@ import os
 import matplotlib.pyplot as plt
 
 class TrainingTracker:
-    def __init__(self, name="model"):
+    def __init__(self, name="model", output_dir="results"):
         self.name = name
+        self.output_dir = output_dir
         self.train_loss = []
         self.val_loss = []
         self.val_f1 = []
 
-        # if there is no folder
-        os.makedirs("results", exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
 
     def log(self, train_loss, val_loss, val_f1):
         self.train_loss.append(train_loss)
@@ -26,8 +26,7 @@ class TrainingTracker:
         plt.legend()
         plt.grid()
 
-        plt.savefig(f"results/{self.name}_loss.png")
-        plt.show()
+        plt.savefig(f"{self.output_dir}/{self.name}_loss.png")
         plt.close()
 
     def plot_f1(self):
@@ -39,6 +38,5 @@ class TrainingTracker:
         plt.legend()
         plt.grid()
 
-        plt.savefig(f"results/{self.name}_F1score.png")
-        plt.show()
+        plt.savefig(f"{self.output_dir}/{self.name}_F1score.png")
         plt.close()
