@@ -1,6 +1,6 @@
 # Speech Emotion Recognition using CNN
 
-A lightweight 2D CNN trained on log-mel spectrograms and MFCC features for classifying
+2D CNN trained on log-mel spectrograms and MFCC features for classifying
 six emotions from speech. Evaluated on CREMA-D and RAVDESS with a speaker-independent
 70/15/15 split. Includes ablation study (SpecAugment, dropout), noise robustness testing
 (SNR 20 dB / 5 dB), Grad-CAM interpretability, and transfer learning from CREMA-D to RAVDESS.
