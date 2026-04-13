@@ -49,8 +49,7 @@ python train.py --feature mel --no-dropout --seed 42                # No Dropout
 python train.py --feature mel --dataset ravdess --seed 42           # RAVDESS cross-dataset
 
 # 3. Transfer learning: CREMA-D → RAVDESS
-python train.py --feature mel --dataset ravdess \
-    --pretrain-from models/mel_best_model.pt --freeze-conv --seed 42
+python train.py --feature mel --dataset ravdess --pretrain-from models/mel_best_model.pt --freeze-conv --seed 42
 
 # 4. Evaluate (noise robustness + confusion matrix)
 python evaluate.py --feature mel
