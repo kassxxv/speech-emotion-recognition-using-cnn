@@ -2,13 +2,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class EmotionCNNAttention(nn.Module):
+class EmotionCNN(nn.Module):
     """CNN for emotion recognition."""
 
-    def __init__(self, in_channels=1, num_classes=6, use_dropout=True):
+    def __init__(self, in_channels=1, num_classes=6, use_dropout=True, n_pools=4):
         super().__init__()
 
         self.use_dropout = use_dropout
+        self.n_pools = n_pools
         # Conv block 1: 1 -> 32 channels
         self.conv1 = nn.Conv2d(in_channels, 32, 3, padding=1)
         self.bn1 = nn.BatchNorm2d(32) 
@@ -53,8 +54,12 @@ class EmotionCNNAttention(nn.Module):
         if self.use_dropout:
             x = self.dropout2d(x)
 
-        x = self.pool(F.relu(self.bn4(self.conv4(x))))
-        # 25x5 -> 12x2
+        if self.n_pools >= 4:
+            x = self.pool(F.relu(self.bn4(self.conv4(x))))
+            # 25x5 -> 12x2
+        else:
+            x = F.relu(self.bn4(self.conv4(x)))
+            # 25x5 stays (no pool — more spatial info retained)
         if self.use_dropout:
             x = self.dropout2d(x)
 
@@ -71,35 +76,3 @@ class EmotionCNNAttention(nn.Module):
         x = self.fc2(x)
 
         return x
-# Alternative simpler CNN without attention (for ablation study)
-# class EmotionCNN(nn.Module):
-#     def __init__(self, in_channels=1, num_classes=6):
-#         super().__init__()
-#         self.conv1 = nn.Conv2d(in_channels, 32, 3, padding=1)
-#         self.bn1 = nn.BatchNorm2d(32)
-#         self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
-#         self.bn2 = nn.BatchNorm2d(64)
-#         self.conv3 = nn.Conv2d(64, 128, 3, padding=1)
-#         self.bn3 = nn.BatchNorm2d(128)
-#         self.conv4 = nn.Conv2d(128, 256, 3, padding=1)
-#         self.bn4 = nn.BatchNorm2d(256)
-
-#         self.pool = nn.MaxPool2d(2)
-#         self.dropout2d = nn.Dropout2d(0.15)
-#         self.dropout = nn.Dropout(0.5)
-
-#         self.fc1 = nn.Linear(256 * 2 * 12, 512) # Hidden layer with 512 units for better representation learning
-#         self.fc2 = nn.Linear(512, num_classes)
-
-#     def forward(self, x):
-#         x = self.pool(F.relu(self.bn1(self.conv1(x))))
-#         x = self.pool(F.relu(self.bn2(self.conv2(x))))
-#         x = self.dropout2d(x)
-#         x = self.pool(F.relu(self.bn3(self.conv3(x))))
-#         x = self.dropout2d(x)
-#         x = self.pool(F.relu(self.bn4(self.conv4(x))))
-#         x = self.dropout2d(x)
-#         x = x.view(x.size(0), -1)
-#         x = self.dropout(F.relu(self.fc1(x)))
-#         x = self.fc2(x)
-#         return x
