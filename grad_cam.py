@@ -13,8 +13,10 @@ from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
 import librosa
 
-from models import EmotionCNNAttention
+from models import EmotionCNN
 from feature_extraction import extract_mel, extract_mfcc
+from dataloader import RAVDESS_EMOTION_MAP
+from utils import load_compatible_state_dict, add_gaussian_noise, extract_feature_from_waveform
 
 parser = argparse.ArgumentParser(description="Generate Grad-CAM visualizations for all emotions")
 parser.add_argument(
@@ -29,15 +31,43 @@ parser.add_argument(
     "--no-dropout", action="store_true",
     help="Load a model trained without dropout (must match training flag used)"
 )
+parser.add_argument(
+    "--dataset", choices=["crema", "ravdess"], default="crema",
+    help="Dataset the model was trained on (default: crema)"
+)
+parser.add_argument(
+    "--snr", type=int, default=None,
+    help="If set, generate a clean-vs-noisy Grad-CAM comparison at this SNR (dB). "
+         "Saves to gradcam_snr{N}/ instead of gradcam/."
+)
+parser.add_argument(
+    "--lr", type=float, default=0.001,
+    help="Learning rate used during training — needed to reconstruct experiment name (default: 0.001)"
+)
+parser.add_argument(
+    "--pretrain-from", type=str, default=None,
+    help="Used during training — needed to reconstruct the experiment name"
+)
+parser.add_argument(
+    "--freeze-conv", action="store_true",
+    help="Used during training — needed to reconstruct the experiment name"
+)
 args = parser.parse_args()
 
-feature_type = args.feature
-aug_tag      = "_noaug" if args.no_augment else ""
-dropout_tag  = "_nodropout" if args.no_dropout else ""
-exp_name     = f"{feature_type}{aug_tag}{dropout_tag}"
+feature_type  = args.feature
+dataset       = args.dataset
+snr_db        = args.snr
+lr            = args.lr
+dataset_tag   = "ravdess_" if dataset == "ravdess" else ""
+aug_tag       = "_noaug"    if args.no_augment      else ""
+dropout_tag   = "_nodropout" if args.no_dropout     else ""
+lr_tag        = f"_lr{str(lr).replace('0.', '').replace('.', '')}" if lr != 0.001 else ""
+pretrain_tag  = "_transfer" if args.pretrain_from   else ""
+freeze_tag    = "_frozen"   if args.freeze_conv     else ""
+exp_name      = f"{dataset_tag}{feature_type}{aug_tag}{dropout_tag}{lr_tag}{pretrain_tag}{freeze_tag}"
 
 model_path  = f"models/{exp_name}_best_model.pt"
-output_dir  = f"results/{exp_name}/gradcam"
+output_dir  = f"results/{exp_name}/gradcam_snr{snr_db}" if snr_db is not None else f"results/{exp_name}/gradcam"
 os.makedirs(output_dir, exist_ok=True)
 
 EMOTION_MAP = {
@@ -49,7 +79,8 @@ EMOTION_MAP = {
     "SAD": ("sad",     5),
 }
 
-CSV_PATH   = "crema_metadata.csv"
+CSV_PATH   = "ravdess_metadata.csv" if dataset == "ravdess" else "crema_metadata.csv"
+ITER_MAP   = RAVDESS_EMOTION_MAP if dataset == "ravdess" else EMOTION_MAP  # emotion codes differ per dataset
 HOP_LENGTH = 512
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -57,29 +88,7 @@ print(f"Using device: {device}")
 print(f"Loading model: {model_path}")
 
 
-def load_compatible_state_dict(model, checkpoint_path, device):
-    """Load only checkpoint parameters that exist in the current model with matching shape."""
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    if "state_dict" in checkpoint:
-        checkpoint = checkpoint["state_dict"]
-    elif "model_state_dict" in checkpoint:
-        checkpoint = checkpoint["model_state_dict"]
-
-    model_state = model.state_dict()
-    compatible = {}
-    skipped = []
-
-    for key, value in checkpoint.items():
-        if key in model_state and model_state[key].shape == value.shape:
-            compatible[key] = value
-        else:
-            skipped.append(key)
-
-    model.load_state_dict(compatible, strict=False)
-    return skipped
-
-
-model = EmotionCNNAttention(in_channels=1, num_classes=6).to(device)
+model = EmotionCNN(in_channels=1, num_classes=6).to(device)
 
 try:
     skipped = load_compatible_state_dict(model, model_path, device)
@@ -93,8 +102,10 @@ model.eval()
 
 def find_file_for_emotion(csv_path, emotion_code):
     """Find the first audio file in the CSV matching the given emotion code."""
-    df = pd.read_csv(csv_path)
-    row = df[df["emotion_code"] == emotion_code].iloc[0]
+    df = pd.read_csv(csv_path, dtype={"emotion_code": str})
+    # RAVDESS codes are zero-padded ("01", "03" …); normalise both sides
+    df["emotion_code"] = df["emotion_code"].str.zfill(2)
+    row = df[df["emotion_code"] == str(emotion_code).zfill(2)].iloc[0]
     return row["file_path"], row["emotion_id"], row["emotion_name"]
 
 
@@ -108,7 +119,7 @@ def extract_feature(wav_path, feature_type):
 
 def run_gradcam(emotion_code):
     """Generate and save a Grad-CAM visualization for one emotion."""
-    emotion_name, true_label = EMOTION_MAP[emotion_code]
+    emotion_name, true_label = ITER_MAP[emotion_code]
 
     wav_path, _, _ = find_file_for_emotion(CSV_PATH, emotion_code)
     print(f"\n[{emotion_code}] File: {wav_path}")
@@ -200,8 +211,81 @@ def run_gradcam(emotion_code):
     print(f"  Saved: {out_path}")
 
 
+def run_gradcam_noisy(emotion_code, snr_db):
+    """Generate a 2-row Grad-CAM figure comparing clean vs noisy input."""
+    emotion_name, true_label = ITER_MAP[emotion_code]
+
+    wav_path, _, _ = find_file_for_emotion(CSV_PATH, emotion_code)
+    print(f"\n[{emotion_code}] File: {wav_path}  SNR={snr_db}dB")
+
+    y, sr = librosa.load(wav_path, sr=None)
+    y_noisy = add_gaussian_noise(y, snr_db)
+
+    info       = sf.info(wav_path)
+    last_frame = min(int(info.duration * sr / HOP_LENGTH), 200)
+    real_dur   = last_frame * HOP_LENGTH / sr
+    tick_pos   = np.linspace(0, last_frame - 1, 6)
+    tick_sec   = [f"{t:.2f}" for t in tick_pos * HOP_LENGTH / sr]
+    y_label    = "Mel frequency (bin)" if feature_type == "mel" else "MFCC coefficient"
+
+    results = []
+    for label, waveform in [("Clean", y), (f"Noisy (SNR {snr_db}\u202fdB)", y_noisy)]:
+        feat_np   = extract_feature_from_waveform(waveform, sr, feature_type)
+        feat_norm = (feat_np - feat_np.min()) / (feat_np.max() - feat_np.min() + 1e-8)
+        inp       = torch.tensor(feat_np).float().unsqueeze(0).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            logits     = model(inp)
+            pred_class = int(logits.argmax(dim=1).item())
+            pred_name  = [v[0] for v in EMOTION_MAP.values() if v[1] == pred_class][0]
+
+        target_layer  = model.conv4
+        cam           = GradCAM(model=model, target_layers=[target_layer])
+        grayscale_cam = cam(input_tensor=inp, targets=[ClassifierOutputTarget(true_label)])[0]
+
+        feat_crop = feat_np[:, :last_frame]
+        cam_crop  = grayscale_cam[:, :last_frame]
+        rgb_crop  = cm.viridis(feat_norm[:, :last_frame])[:, :, :3].astype(np.float32)
+        results.append((label, pred_name, feat_crop, cam_crop, rgb_crop))
+        print(f"  [{label}] Predicted: {pred_name}, True: {emotion_name}")
+
+    fig, axes = plt.subplots(2, 3, figsize=(18, 9))
+    for row, (label, pred_name, feat_crop, cam_crop, rgb_crop) in enumerate(results):
+        img1 = axes[row, 0].imshow(feat_crop, aspect="auto", origin="lower", cmap="viridis")
+        axes[row, 0].set_xticks(tick_pos); axes[row, 0].set_xticklabels(tick_sec)
+        axes[row, 0].set_title(f"{label} — {feature_type.upper()}", fontsize=12)
+        axes[row, 0].set_xlabel("Time (s)"); axes[row, 0].set_ylabel(y_label)
+        plt.colorbar(img1, ax=axes[row, 0], label="dB" if feature_type == "mel" else "Value")
+
+        img2 = axes[row, 1].imshow(cam_crop, aspect="auto", origin="lower", cmap="jet")
+        axes[row, 1].set_xticks(tick_pos); axes[row, 1].set_xticklabels(tick_sec)
+        axes[row, 1].set_title(f"{label} — Grad-CAM Heatmap", fontsize=12)
+        axes[row, 1].set_xlabel("Time (s)"); axes[row, 1].set_ylabel(y_label)
+        plt.colorbar(img2, ax=axes[row, 1], label="Importance")
+
+        axes[row, 2].imshow(rgb_crop, aspect="auto", origin="lower")
+        axes[row, 2].imshow(cam_crop, aspect="auto", origin="lower", cmap="jet", alpha=0.5)
+        axes[row, 2].set_xticks(tick_pos); axes[row, 2].set_xticklabels(tick_sec)
+        axes[row, 2].set_title(f"Overlay — True: {emotion_name} | Pred: {pred_name}", fontsize=12)
+        axes[row, 2].set_xlabel("Time (s)"); axes[row, 2].set_ylabel(y_label)
+
+    plt.suptitle(
+        f"Grad-CAM: '{emotion_name}' — Clean vs Noisy (SNR {snr_db}\u202fdB) | {feature_type.upper()}",
+        fontsize=14, fontweight="bold"
+    )
+    plt.tight_layout()
+    out_path = os.path.join(output_dir, f"gradcam_{emotion_name}_snr{snr_db}.png")
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Saved: {out_path}")
+
+
 # Run Grad-CAM for all 6 emotions
-for emotion_code in EMOTION_MAP:
-    run_gradcam(emotion_code)
+if snr_db is not None:
+    for emotion_code in ITER_MAP:
+        run_gradcam_noisy(emotion_code, snr_db)
+else:
+    for emotion_code in ITER_MAP:
+        run_gradcam(emotion_code)
 
 print("\nDone.")

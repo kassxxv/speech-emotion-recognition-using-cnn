@@ -4,9 +4,10 @@ import torch
 import numpy as np
 import pandas as pd
 import librosa
-from models import EmotionCNNAttention
+from models import EmotionCNN
 from sklearn.metrics import f1_score, confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
+from utils import load_compatible_state_dict, add_gaussian_noise, extract_feature_from_waveform
 
 parser = argparse.ArgumentParser(description="Evaluate SER model: noise robustness + confusion matrix")
 parser.add_argument(
@@ -21,12 +22,51 @@ parser.add_argument(
     "--no-dropout", action="store_true",
     help="Load a model trained without dropout (must match training flag used)"
 )
+parser.add_argument(
+    "--dataset", choices=["crema", "ravdess"], default="crema",
+    help="Dataset the model was trained on (default: crema)"
+)
+parser.add_argument(
+    "--normalize", action="store_true",
+    help="Load a model trained with z-score normalization"
+)
+parser.add_argument(
+    "--n-mels", type=int, default=40,
+    help="Number of mel bands used during training (default: 40)"
+)
+parser.add_argument(
+    "--lr", type=float, default=0.001,
+    help="Learning rate used during training (default: 0.001)"
+)
+parser.add_argument(
+    "--pools", type=int, choices=[3, 4], default=4,
+    help="Number of MaxPool layers used during training (default: 4)"
+)
+parser.add_argument(
+    "--pretrain-from", type=str, default=None,
+    help="Used during training — needed to reconstruct the experiment name"
+)
+parser.add_argument(
+    "--freeze-conv", action="store_true",
+    help="Used during training — needed to reconstruct the experiment name"
+)
 args = parser.parse_args()
 
-feature_type = args.feature
-aug_tag      = "_noaug" if args.no_augment else ""
-dropout_tag  = "_nodropout" if args.no_dropout else ""
-exp_name     = f"{feature_type}{aug_tag}{dropout_tag}"
+feature_type  = args.feature
+dataset       = args.dataset
+n_mels        = args.n_mels
+lr            = args.lr
+n_pools       = args.pools
+dataset_tag   = "ravdess_" if dataset == "ravdess" else ""
+aug_tag       = "_noaug"    if args.no_augment      else ""
+dropout_tag   = "_nodropout" if args.no_dropout     else ""
+norm_tag      = "_norm"     if args.normalize       else ""
+mels_tag      = f"_mels{n_mels}" if n_mels != 40   else ""
+lr_tag        = f"_lr{str(lr).replace('0.', '').replace('.', '')}" if lr != 0.001 else ""
+pool_tag      = f"_{n_pools}pool" if n_pools != 4   else ""
+pretrain_tag  = "_transfer" if args.pretrain_from   else ""
+freeze_tag    = "_frozen"   if args.freeze_conv     else ""
+exp_name      = f"{dataset_tag}{feature_type}{aug_tag}{dropout_tag}{norm_tag}{mels_tag}{lr_tag}{pool_tag}{pretrain_tag}{freeze_tag}"
 
 results_dir  = f"results/{exp_name}"
 model_path   = f"models/{exp_name}_best_model.pt"
@@ -40,30 +80,7 @@ print(f"Using device: {device}")
 print(f"Loading model: {model_path}")
 
 # Load model
-model = EmotionCNNAttention(in_channels=1, num_classes=6).to(device)
-
-
-def load_compatible_state_dict(model, checkpoint_path, device):
-    """Load only checkpoint parameters that exist in the current model with matching shape."""
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    if "state_dict" in checkpoint:
-        checkpoint = checkpoint["state_dict"]
-    elif "model_state_dict" in checkpoint:
-        checkpoint = checkpoint["model_state_dict"]
-
-    model_state = model.state_dict()
-
-    compatible = {}
-    skipped = []
-
-    for key, value in checkpoint.items():
-        if key in model_state and model_state[key].shape == value.shape:
-            compatible[key] = value
-        else:
-            skipped.append(key)
-
-    model.load_state_dict(compatible, strict=False)
-    return skipped
+model = EmotionCNN(in_channels=1, num_classes=6, n_pools=n_pools).to(device)
 
 
 try:
@@ -76,49 +93,6 @@ except FileNotFoundError:
     exit()
 
 model.eval()
-
-
-def add_noise_snr(signal, snr_db):
-    """Add Gaussian noise with specified SNR (Signal-to-Noise Ratio) in dB."""
-    signal_power = np.mean(signal**2)
-    noise_power = signal_power / (10**(snr_db / 10))
-    noise = np.random.normal(0, np.sqrt(noise_power), signal.shape)
-    return signal + noise
-
-
-def extract_mel_from_waveform(y, sr, n_mels=40, target_frames=200):
-    """Create a fixed-size log-mel spectrogram from waveform."""
-    mel = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=n_mels)
-    mel_db = librosa.power_to_db(mel)
-
-    if mel_db.shape[1] < target_frames:
-        pad = target_frames - mel_db.shape[1]
-        mel_db = np.pad(mel_db, ((0, 0), (0, pad)))
-    else:
-        mel_db = mel_db[:, :target_frames]
-
-    return mel_db.astype(np.float32)
-
-
-def extract_mfcc_from_waveform(y, sr, n_mfcc=40, target_frames=200):
-    """Create a fixed-size MFCC array from waveform."""
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc)
-
-    if mfcc.shape[1] < target_frames:
-        pad = target_frames - mfcc.shape[1]
-        mfcc = np.pad(mfcc, ((0, 0), (0, pad)))
-    else:
-        mfcc = mfcc[:, :target_frames]
-
-    return mfcc.astype(np.float32)
-
-
-def extract_feature_from_waveform(y, sr, feature_type):
-    """Extract mel or MFCC feature from waveform depending on feature_type."""
-    if feature_type == "mel":
-        return extract_mel_from_waveform(y, sr)
-    else:
-        return extract_mfcc_from_waveform(y, sr)
 
 
 def get_test_dataframe(csv_path="crema_metadata.csv", split_seed=42):
@@ -138,7 +112,8 @@ def get_test_dataframe(csv_path="crema_metadata.csv", split_seed=42):
 evaluation_conditions = [("clean", None), ("snr_20", 20), ("snr_5", 5)]
 f1_scores = []
 condition_labels = []
-val_df = get_test_dataframe()
+csv_path = "ravdess_metadata.csv" if dataset == "ravdess" else "crema_metadata.csv"
+val_df   = get_test_dataframe(csv_path=csv_path)
 
 print(f"Test samples for evaluation: {len(val_df)}")
 
@@ -146,6 +121,7 @@ print(f"Test samples for evaluation: {len(val_df)}")
 clean_y_true = []
 clean_y_pred = []
 
+np.random.seed(42)
 for label, snr in evaluation_conditions:
     if snr is None:
         print("\nEvaluating clean input")
@@ -159,7 +135,7 @@ for label, snr in evaluation_conditions:
         for row in val_df.itertuples(index=False):
             y_wave, sr = librosa.load(row.file_path, sr=None)
             if snr is not None:
-                y_wave = add_noise_snr(y_wave, snr)
+                y_wave = add_gaussian_noise(y_wave, snr)
 
             feature = extract_feature_from_waveform(y_wave, sr, feature_type)
             x = torch.tensor(feature, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
@@ -229,6 +205,7 @@ snr5_f1           = f1_scores[2]
 
 new_row = pd.DataFrame([{
     "experiment":   exp_name,
+    "dataset":      dataset,
     "feature":      feature_type,
     "augment":      not args.no_augment,
     "dropout":      not args.no_dropout,
