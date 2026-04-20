@@ -10,7 +10,7 @@ six emotions from speech. Evaluated on CREMA-D and RAVDESS with a speaker-indepe
 | File | Description |
 |------|-------------|
 | `train.py` | Train the CNN (mel or MFCC, ablation flags, transfer learning) |
-| `evaluate.py` | Evaluate saved model: weighted F1, noise robustness, confusion matrix |
+| `evaluate.py` | Evaluate saved model: macro F1, noise robustness, confusion matrix |
 | `grad_cam.py` | Generate Grad-CAM visualisations (clean or noisy input) |
 | `models.py` | EmotionCNN architecture (4 conv blocks, GAP, FC head) |
 | `dataloader.py` | Dataset splits and PyTorch DataLoaders for CREMA-D and RAVDESS |
@@ -49,7 +49,8 @@ python train.py --feature mel --no-dropout --seed 42                # No Dropout
 python train.py --feature mel --dataset ravdess --seed 42           # RAVDESS cross-dataset
 
 # 3. Transfer learning: CREMA-D → RAVDESS
-python train.py --feature mel --dataset ravdess --pretrain-from models/mel_best_model.pt --freeze-conv --seed 42
+python train.py --feature mel --dataset ravdess \
+    --pretrain-from models/mel_best_model.pt --lr 0.0003 --seed 42
 
 # 4. Evaluate (noise robustness + confusion matrix)
 python evaluate.py --feature mel
@@ -57,7 +58,7 @@ python evaluate.py --feature mfcc
 python evaluate.py --feature mel --no-augment
 python evaluate.py --feature mel --no-dropout
 python evaluate.py --feature mel --dataset ravdess
-python evaluate.py --feature mel --dataset ravdess --pretrain-from models/mel_best_model.pt --freeze-conv
+python evaluate.py --feature mel --dataset ravdess --lr 0.0003 --pretrain-from models/mel_best_model.pt
 
 # 5. Grad-CAM visualisations
 python grad_cam.py --feature mel                  # Clean input, all 6 emotions
@@ -70,14 +71,14 @@ Open `notebooks/` in Jupyter to explore results interactively.
 
 | Configuration | Clean F1 | SNR-20 dB | SNR-5 dB |
 |---|---|---|---|
-| Mel + SpecAugment + Dropout | 61.62% | 55.19% | **47.02%** |
-| MFCC + SpecAugment + Dropout | **64.36%** | **58.14%** | 42.71% |
-| Mel — no SpecAugment | 63.45% | 56.17% | 41.03% |
-| Mel — no Dropout | 62.44% | 57.21% | 50.59% |
-| RAVDESS (from scratch) | 39.30% | 21.88% | 14.22% |
-| RAVDESS (transfer from CREMA-D) | 52.68% | 42.55% | 36.87% |
+| Mel + SpecAugment + Dropout | 61.78% | 55.15% | **47.29%** |
+| MFCC + SpecAugment + Dropout | **64.52%** | **58.64%** | 43.02% |
+| Mel — no SpecAugment | 63.57% | 55.77% | 42.22% |
+| Mel — no Dropout | 62.60% | 57.61% | 50.38% |
+| RAVDESS (from scratch) | 39.40% | 20.06% | 13.04% |
+| RAVDESS (transfer from CREMA-D) | 51.86% | 41.96% | 33.18% |
 
-All results use weighted F1 on the held-out test set, seed = 42.
+All results use macro F1 on the held-out test set, seed = 42.
 
 ## Emotions
 
