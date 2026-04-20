@@ -146,7 +146,7 @@ for label, snr in evaluation_conditions:
             y_true.append(int(row.emotion_id))
             y_pred.append(pred)
 
-    f1 = f1_score(y_true, y_pred, average="weighted")
+    f1 = f1_score(y_true, y_pred, average="macro")
     f1_scores.append(f1)
     condition_labels.append(label)
 
