@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Speech Emotion Recognition</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+
+    <div class="header">
+      <h1>Speech Emotion Recognition</h1>
+    </div>
+
+    <canvas id="waveform"></canvas>
+
+    <div class="emotion-display">
+      <span class="emotion-label">Detected emotion</span>
+      <div id="current-emotion">—</div>
+    </div>
+
+    <div class="controls">
+      <button id="toggle">Start Recording</button>
+    </div>
+
+    <p id="status">Ready</p>
+
+    <div id="emotion-bars"></div>
+
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
