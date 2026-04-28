@@ -199,9 +199,9 @@ print(f"Per-class F1 saved to {per_class_path}")
 
 # Append this run to the global comparison table
 comparison_path = "results/comparison_table.csv"
-clean_f1_weighted = f1_scores[0]
-snr20_f1          = f1_scores[1]
-snr5_f1           = f1_scores[2]
+clean_f1_macro = f1_scores[0]
+snr20_f1       = f1_scores[1]
+snr5_f1        = f1_scores[2]
 
 new_row = pd.DataFrame([{
     "experiment":   exp_name,
@@ -209,7 +209,7 @@ new_row = pd.DataFrame([{
     "feature":      feature_type,
     "augment":      not args.no_augment,
     "dropout":      not args.no_dropout,
-    "clean_f1":     round(clean_f1_weighted, 4),
+    "clean_f1":     round(clean_f1_macro, 4),
     "snr20_f1":     round(snr20_f1, 4),
     "snr5_f1":      round(snr5_f1, 4),
 }])

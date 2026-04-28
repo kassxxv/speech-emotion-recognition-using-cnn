@@ -49,7 +49,7 @@ python train.py --feature mel --no-dropout --seed 42                # No Dropout
 python train.py --feature mel --dataset ravdess --seed 42           # RAVDESS cross-dataset
 
 # 3. Transfer learning: CREMA-D → RAVDESS
-python train.py --feature mel --dataset ravdess --pretrain-from models/mel_best_model.pt --lr 0.0003 --seed 42
+python train.py --feature mel --dataset ravdess --pretrain-from models/mel_best_model.pt --lr 0.0001 --seed 42
 
 # 4. Evaluate (noise robustness + confusion matrix)
 python evaluate.py --feature mel
@@ -57,7 +57,7 @@ python evaluate.py --feature mfcc
 python evaluate.py --feature mel --no-augment
 python evaluate.py --feature mel --no-dropout
 python evaluate.py --feature mel --dataset ravdess
-python evaluate.py --feature mel --dataset ravdess --lr 0.0003 --pretrain-from models/mel_best_model.pt
+python evaluate.py --feature mel --dataset ravdess --lr 0.0001 --pretrain-from models/mel_best_model.pt
 
 # 5. Grad-CAM visualisations
 python grad_cam.py --feature mel                  # Clean input, all 6 emotions
@@ -70,12 +70,12 @@ Open `notebooks/` in Jupyter to explore results interactively.
 
 | Configuration | Clean F1 | SNR-20 dB | SNR-5 dB |
 |---|---|---|---|
-| Mel + SpecAugment + Dropout | 61.78% | 55.15% | **47.29%** |
-| MFCC + SpecAugment + Dropout | **64.52%** | **58.64%** | 43.02% |
-| Mel — no SpecAugment | 63.57% | 55.77% | 42.22% |
-| Mel — no Dropout | 62.60% | 57.61% | 50.38% |
-| RAVDESS (from scratch) | 39.40% | 20.06% | 13.04% |
-| RAVDESS (transfer from CREMA-D) | 51.86% | 41.96% | 33.18% |
+| Mel + SpecAugment + Dropout | 61.89% | 55.49% | **48.59%** |
+| MFCC + SpecAugment + Dropout | **64.38%** | **57.94%** | 37.18% |
+| Mel — no SpecAugment | 62.45% | 51.59% | 32.12% |
+| Mel — no Dropout | 62.40% | 55.67% | 43.25% |
+| RAVDESS (from scratch) | 38.14% | 20.06% | 10.45% |
+| RAVDESS (transfer from CREMA-D) | 44.97% | 41.96% | 30.89% |
 
 All results use macro F1 on the held-out test set, seed = 42.
 
