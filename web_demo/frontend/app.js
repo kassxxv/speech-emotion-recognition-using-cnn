@@ -189,7 +189,8 @@ toggleBtn.addEventListener('click', () => {
 async function start() {
   statusEl.textContent = 'Connecting…';
 
-  ws = new WebSocket(`ws://${location.host}/ws`);
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error('WebSocket failed')); });
 
   recorder = new AudioRecorder((chunk) => {
