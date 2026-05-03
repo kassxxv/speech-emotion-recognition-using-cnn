@@ -4,7 +4,11 @@
 six emotions from speech. Evaluated on CREMA-D and RAVDESS with a speaker-independent
 70/15/15 split. Includes ablation study (SpecAugment, dropout), noise robustness testing
 (SNR 20 dB / 5 dB), Grad-CAM interpretability, and transfer learning from CREMA-D to RAVDESS.
-![CNN](1_5BwZUqAqFFP5f3wKYQ6wJg.gif.gif)
+
+<p align="center">
+  <img src="1_5BwZUqAqFFP5f3wKYQ6wJg.gif.gif" width="600" alt="Demo"/>
+</p>
+
 ## Project structure
 
 | File | Description |
