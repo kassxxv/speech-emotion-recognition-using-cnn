@@ -1,6 +1,6 @@
 # Speech Emotion Recognition using CNN
 
-<p align="center">
+<p align="left">
   <img src="1_5BwZUqAqFFP5f3wKYQ6wJg.gif.gif" width="550" alt="Demo"/>
 </p>
 
