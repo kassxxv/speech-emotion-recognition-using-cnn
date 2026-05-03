@@ -1,7 +1,7 @@
 # Speech Emotion Recognition using CNN
 
 <p align="left">
-  <img src="1_5BwZUqAqFFP5f3wKYQ6wJg.gif.gif" width="550" alt="Demo"/>
+  <img src="Fig_01.gif.gif" width="550" alt="Demo"/>
 </p>
 
 2D CNN trained on log-mel spectrograms and MFCC features for classifying
